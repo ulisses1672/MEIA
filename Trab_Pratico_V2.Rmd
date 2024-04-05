@@ -1,0 +1,495 @@
+---
+title: "R Notebook Apples"
+output: html_notebook
+---
+
+
+```{r}
+# Load necessary libraries
+setwd("D:/_MIAA/MEIA/csv")
+library(readr)
+library(tidyverse)
+library(GGally)
+library(ggplot2)
+library(reshape2)
+library(corrplot)
+#library(caret)
+library(pdp)
+library(pROC)
+library(cluster)
+library(clValid)
+```
+
+```{r}
+# Load data
+data <- read.csv("./apple_quality.csv")
+
+```
+
+
+```{r}
+# --------------------------------------------------------
+# Exploratory Data Analysis (EDA) with Visualizations
+# --------------------------------------------------------
+
+# Check for missing values
+summary(data)
+```
+
+
+```{r}
+# Handle missing values in Acidity (assuming median imputation)
+data$Acidity <- as.numeric(as.character(data$Acidity))
+non_numeric <- is.na(data$Acidity_numeric) & !is.na(data$Acidity)
+data$Acidity[is.na(data$Acidity)] <- median(data$Acidity, na.rm = TRUE)
+
+```
+
+
+```{r}
+# Check for missing values again (useful for further cleaning if needed)
+summary(data)
+
+```
+
+
+```{r}
+
+# Visualizing Distributions of Individual Variables
+
+# Histograms
+# Using ggplot2
+# Reset graphics state (optional)
+
+ggplot(data, aes(x = Size)) +
+  geom_histogram(binwidth = 0.5, fill = "blue", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribution of Size", x = "Size", y = "Count")
+
+
+```
+
+
+```{r}
+# Density plots
+ggplot(data, aes(x = Sweetness)) +
+  geom_density(fill = "green") +
+  labs(title = "Density of Sweetness", x = "Sweetness")
+
+```
+
+
+```{r}
+# Visualizing Relationships Between Variables
+
+# Scatter plots (example - Sweetness vs Crunchiness)
+plot(data$Sweetness, data$Crunchiness, main = "Sweetness vs Crunchiness", xlab = "Sweetness", ylab = "Crunchiness")
+
+```
+
+
+```{r}
+# Pair Plots
+ggpairs(data[, c("Size", "Weight", "Sweetness", "Crunchiness", "Juiciness", "Ripeness", "Acidity")])
+
+```
+
+```{r}
+# Correlation Matrix
+cor_matrix <- cor(data[, sapply(data, is.numeric)])
+
+```
+
+
+```{r}
+# Heatmap with ggplot2
+melted_cor_matrix <- melt(cor_matrix)
+ggplot(melted_cor_matrix, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(midpoint = 0, low = "green", mid = "white", high = "red") +
+  theme_minimal() +
+  labs(title = "Correlation Matrix Heatmap")
+
+```
+
+```{r}
+# Categorical Variables
+# Bar plot for Quality
+quality_distribution <- table(data$Quality)
+barplot(quality_distribution, main = "Distribution of Apple Quality", xlab = "Quality", ylab = "Count")
+
+```
+
+
+## Linear Regression 
+```{r}
+# --------------------------------------------------------
+# Linear Regression Section
+# --------------------------------------------------------
+
+# Prepare Data for Linear Regression
+regression_data <- data[, !(names(data) %in% c("A_id", "Quality"))]
+```
+
+
+```{r}
+# Fit the Linear Regression Model
+model <- lm(Juiciness ~ ., data=regression_data)
+```
+
+
+```{r}
+# Display and interpret model summary
+summary(model)
+
+```
+
+```{r}
+# Conclusões
+# Identificar o 1º b's
+# y = b0 + b1x1 + b2x2+....
+
+# Juiciness = 0.72 - 0.09 size - 0.23 weight - 0.46 sweetness - 0.44 crunchiness - 0.19 ripness + 0.24 acidity
+# 1º b é -0.09 size, se todas as outras caracteristicas da maça se mantiverem enalteradas se o size aumentar a Juiciness diminui.., ou seja, com o autmento do tamanho # da maça diminui a doçura da mesma
+# como todas as variaveis são significativas (todas tem ** ) não se pode retirar nenhuma 
+
+
+```
+
+```{r}
+# Evaluate Model's Assumptions (plots not shown here)
+par(mar = c(bottom = 2, left = 2, top = 2, right = 2))
+#par(mfrow=c(2,2))
+plot(model)
+
+# Make Predictions (for demonstration)
+predictions <- predict(model, regression_data)
+head(predictions)
+head(regression_data$Juiciness)
+```
+```{r}
+# Conclusões
+# O gráfico Residuals vs Fitted mostra que a linha está sempre muito perto do 0 como era desejável, há apenas uma pequena curva mas não é significava.
+# No gráfico Q-Q Residuals pode se ver que os residuos seguem uma distrbuição normal..
+# Most residuals should be close to 0, indicating that the predicted values are close to the actual values. Verifica-se
+# The distribution of residuals should be symmetrical around 0, meaning there's no systematic overestimation or underestimation by the model. Verifica-se
+# The presence of outliers should be minimal since outliers can significantly skew the distribution away from normal. Verifca-se
+# Por estes motivos o modelo aplicado é adequado.
+
+```
+
+
+
+```{r}
+## b´s 
+## "Size", "Weight", "Sweetness" , "Crunchiness", "Juiciness", "Ripeness" and "Acidity".
+
+#Based on the output, here are some conclusions you can draw:
+
+#The model is fit using a formula where "Juiciness" is the dependent variable and all other columns in the data are considered independent variables.
+#The R-squared value (0.18) suggests that the model explains only a small proportion of the variance in "Juiciness".
+#The p-values of some of the independent variables are statistically significant (less than 0.05), including Size, Sweetness, Crunchiness, Ripeness, and Acidity. This indicates that these variables have a statistically significant relationship with "Juiciness".
+#The signs of the coefficients for some significant variables are negative. For instance, the coefficient for "Size" is negative. This means #that with a larger size, the model predicts a decrease in "Juiciness" on average, holding all other variables constant.
+
+
+```
+
+## Logistic Regression Section
+
+
+```{r}
+# --------------------------------------------------------
+# Logistic Regression Section
+# --------------------------------------------------------
+
+# Prepare Data for Logistic Regression
+data$QualityNumeric <- ifelse(data$Quality == "good", 1, 0)
+logistic_data <- data[, c("Size", "Weight", "Sweetness", "Crunchiness", "Juiciness", "Ripeness", "Acidity", "QualityNumeric")]
+
+```
+
+
+```{r}
+# Fit the Logistic Regression Model
+logistic_model <- glm(QualityNumeric ~ ., data = logistic_data, family = binomial)
+```
+
+
+```{r}
+# Display and interpret model summary
+summary(logistic_model)
+```
+```{r}
+# 1º X
+# QualityNumeric = 0.65 + 0.64 Size + 0.27 Weight + 0.57 Sweetness + 0.03 Crunchiness + 0.44 Juiciness - 0.13 Ripeness - 0.29 Acidity
+# Com  o aumento do tamanho aumenta a qualidade da maça
+# Como podemos ver a Crunchiness  não é significativa para a qualidade, por isso podemos retirar
+# 
+
+
+
+```
+
+```{r}
+# Predicting outcomes using the model
+fitted_results <- predict(logistic_model, newdata = logistic_data, type = "response")
+predicted_class <- ifelse(fitted_results > 0.5, 1, 0)
+```
+
+
+```{r}
+# Now, ensure both actual and predicted are of the same length
+actual <- logistic_data$QualityNumeric # Make sure this matches the data used in predict()
+predicted <- as.factor(predicted_class)
+```
+
+
+```{r}
+# Check lengths (for troubleshooting)
+print(length(actual))
+print(length(predicted))
+```
+
+
+
+```{r}
+# Assuming the lengths match, create the confusion matrix
+if (length(actual) == length(predicted)) {
+  conf_matrix <- table(Predicted = predicted, Actual = actual)
+  print(conf_matrix)
+  
+  # Calculate metrics based on the confusion matrix
+  accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+  print(paste("Accuracy:", accuracy))
+  
+  # Sensitivity and specificity calculations
+  sensitivity <- conf_matrix["1", "1"] / sum(conf_matrix[, "1"])
+  specificity <- conf_matrix["0", "0"] / sum(conf_matrix[, "0"])
+  print(paste("Sensitivity:", sensitivity))
+  print(paste("Specificity:", specificity))
+} else {
+  print("Error: Predicted and actual outcomes do not match in length.")
+}
+
+
+#print(conf_matrix)
+
+```
+
+
+```{r}
+# Make Predictions for new data (example)
+new_data <- data.frame(Size = c(0.5), Weight = c(-0.2), Sweetness = c(1.0), Crunchiness = c(0.8), Juiciness = c(0.5), Ripeness = c(-0.3), Acidity = c(0.4))
+predicted_quality <- predict(logistic_model, newdata = new_data, type = "response")
+predicted_class_new <- ifelse(predicted_quality > 0.5, "good", "bad")
+print(predicted_class_new)
+```
+
+
+
+
+```{r}
+# Check column names
+colnames(logistic_data)
+
+# Check structure of the dataset
+str(logistic_data)
+
+```
+
+
+
+```{r}
+# Fit the Logistic Regression Model
+logistic_model <- glm(QualityNumeric ~ Size + Weight + Sweetness + Crunchiness + Juiciness + Ripeness + Acidity, 
+                      data = logistic_data, family = binomial)
+
+```
+
+
+```{r}
+# Remove missing values from Sweetness column
+logistic_data <- logistic_data[!is.na(logistic_data$Sweetness), ]
+
+# Define 'x' as a sequence of values
+x <- seq(min(logistic_data$Sweetness, na.rm = TRUE), 
+         max(logistic_data$Sweetness, na.rm = TRUE), 
+         length.out = 100)
+
+# Prepare new data for prediction
+new_data <- data.frame(Sweetness = x,
+                       Size = rep(0, length(x)),  
+                       Weight = rep(0, length(x)),  
+                       Crunchiness = rep(0, length(x)),  
+                       Juiciness = rep(0, length(x)),  
+                       Ripeness = rep(0, length(x)),  
+                       Acidity = rep(0, length(x)))
+
+```
+
+
+
+```{r}
+# Predict using the logistic regression model
+y <- predict(logistic_model, newdata = new_data, type = "response")
+
+```
+
+
+```{r}
+# Plot the logistic regression curve
+plot(logistic_data$Sweetness, logistic_data$QualityNumeric,
+     xlab = "Sweetness", ylab = "Probability of Good Quality",
+     main = "Logistic Regression Curve")
+
+# Add logistic regression curve
+lines(x, y, col = "blue", lwd = 2)
+
+# Add legend
+legend("right", legend = "Logistic Regression Curve", col = "blue", lty = 1, lwd = 3)
+
+
+# Add residuals plot
+plot(logistic_data$Sweetness, residuals(logistic_model),
+  xlab = "Sweetness", ylab = "Residuals")
+
+
+```
+
+
+
+####Clustering 
+
+
+
+```{r}
+# Load the data
+data <- read.csv("apple_quality.csv")
+
+```
+
+
+```{r}
+# Select relevant features for clustering (excluding A_id and Quality columns)
+clustering_data <- data[, c("Size", "Weight", "Sweetness", "Crunchiness", "Juiciness", "Ripeness", "Acidity")]
+```
+
+
+```{r}
+# Preprocess the data (remove any missing values)
+clustering_data <- na.omit(clustering_data)
+```
+
+
+```{r}
+# Convert non-numeric columns to numeric
+clustering_data[] <- lapply(clustering_data, as.numeric)
+
+```
+
+
+```{r}
+# Check for non-numeric columns
+non_numeric_cols <- sapply(clustering_data, function(x) !is.numeric(x))
+if (any(non_numeric_cols)) {
+  print("Non-numeric columns found:")
+  print(names(clustering_data)[non_numeric_cols])
+}
+
+```
+
+
+```{r}
+# Remove any rows with missing values after conversion
+clustering_data <- na.omit(clustering_data)
+```
+
+
+```{r}
+# Scale the features (optional but recommended for K-means)
+scaled_data <- scale(clustering_data)
+```
+
+
+```{r}
+# Choose the number of clusters (e.g., 3 clusters)
+k <- 2
+```
+
+
+```{r}
+# Fit the K-means clustering model
+kmeans_model <- kmeans(scaled_data, centers = k)
+
+```
+
+
+```{r}
+# Visualize the clusters (for 2D data, considering only two features)
+# For higher-dimensional data, you may need to use dimensionality reduction techniques for visualization
+plot(scaled_data[, c("Sweetness", "Crunchiness")], col = kmeans_model$cluster, 
+     main = "K-means Clustering of Apples", xlab = "Sweetness", ylab = "Crunchiness")
+
+# Add cluster centers to the plot
+points(kmeans_model$centers[, c("Sweetness", "Crunchiness")], col = 1:k, pch = 8, cex = 2)
+
+```
+
+
+
+```{r}
+data_norm <- scale(clustering_data)
+
+# Cálculo da distância Euclidiana
+dist_euclidiana <- dist(data_norm, method = "euclidean")
+#print(dist_euclidiana)
+
+# Clustering aglomerativo com o método de Ward
+hc_ward <- hclust(dist_euclidiana, method = "ward.D2")
+
+
+# Plot do dendrograma
+plot(hc_ward)
+
+library(factoextra)
+set.seed(123) # Para reprodutibilidade
+kmeans_result <- kmeans(data_norm, centers = 3, nstart = 25)
+
+
+
+# Visualizar os resultados
+fviz_cluster(kmeans_result, data = data_norm)
+
+library(cluster)
+silhouette_score <- silhouette(kmeans_result$cluster, dist_euclidiana)
+plot(silhouette_score)
+
+```
+## cLValid
+
+```{r}
+nClust <- 2:5
+
+results <- clValid(data_norm, nClust, 
+                   clMethods = c("hierarchical", "kmeans", "pam"), 
+                   validation = "stability", maxitems = 4000,
+                   metric = "euclidean", method = "average")
+
+
+#Summary
+summary(results)
+
+#plot
+plot (results)
+
+#Stability measures
+
+clmethods <- c("hierarchical", "kmeans", "pam")
+stab<- clValid(data_norm,nClust = 2:6, clMethods = clmethods,
+               validation = "stability")
+
+#display
+optimalScores(stab)
+
+
+```
